@@ -42,14 +42,16 @@ h1, h2, h3 {
 [data-testid="stMetric"] {
     background: rgba(55, 0, 60, 0.045);
     border: 1px solid rgba(55, 0, 60, 0.12);
-    padding: 10px 12px;
-    border-radius: 14px;
+    padding: 7px 9px;
+    border-radius: 12px;
 }
+[data-testid="stMetricValue"] {font-size: 1.35rem;}
+[data-testid="stMetricLabel"] {font-size: .82rem;}
 
 .leader-card {
-    border-radius: 18px;
-    padding: 14px 18px;
-    margin-bottom: 12px;
+    border-radius: 16px;
+    padding: 10px 14px;
+    margin: 0 0 10px 7%;
     border: 1px solid rgba(128,128,128,.22);
     background: linear-gradient(135deg, rgba(55,0,60,.06), rgba(0,194,255,.035));
 }
@@ -516,10 +518,10 @@ def render_participant_card(scored: dict, rank: int, bonus_state_now: dict):
     medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"#{rank}")
 
     st.markdown(f'<div class="leader-card {rank_class}">', unsafe_allow_html=True)
-    left, right = st.columns([1.55, 1], gap="large")
+    left, right = st.columns([1.45, 1], gap="medium")
 
     with left:
-        h1, h2, h3 = st.columns([2.2, 1, 1])
+        h1, h2, h3 = st.columns([2.6, .8, .8])
         with h1:
             st.subheader(f"{medal} {scored['name']}")
         with h2:
@@ -643,8 +645,8 @@ scored = [score_participant(p, table, current_bonus) for p in participants]
 scored = sorted(scored, key=lambda x: (-x["total"], x["name"].lower()))
 
 # Tabs
-tab_dash, tab_table, tab_bonus, tab_history = st.tabs(
-    ["🏆 Dashboard", "📋 Premier League-tabell", "🎯 Bonusstatistikk", "📈 Poengutvikling"]
+tab_dash, tab_history = st.tabs(
+    ["🏆 Dashboard", "📈 Poengutvikling"]
 )
 
 with tab_dash:
@@ -660,42 +662,33 @@ with tab_dash:
     for rank, s in enumerate(scored, 1):
         render_participant_card(s, rank, current_bonus)
 
-with tab_table:
-    st.markdown(f'<div class="section-title">Premier League-tabell · {gw_label}</div>', unsafe_allow_html=True)
-    if current_gw == 0:
-        st.caption("Ingen kamper er ferdigspilt ennå. Alle står med 0 poeng og rangeres alfabetisk.")
-    show_real_table(table)
-    st.caption("Tabellen beregnes fra ferdigspilte FPL-registrerte Premier League-kamper.")
+    st.markdown('<div class="section-title">Ligastatus og bonus</div>', unsafe_allow_html=True)
+    dash_left, dash_right = st.columns([1.35, 1], gap="large")
 
-with tab_bonus:
-    st.markdown(f'<div class="section-title">Bonusstatistikk · {gw_label}</div>', unsafe_allow_html=True)
-    if current_gw == 0:
-        st.info("Bonuskonkurransene starter først når det finnes sportslige resultater.")
-    show_bonus_dashboard(current_bonus)
+    with dash_left:
+        st.markdown(f"#### Premier League-tabell · {gw_label}")
+        if current_gw == 0:
+            st.caption("Ingen kamper er ferdigspilt ennå. Alle står med 0 poeng og rangeres alfabetisk.")
+        show_real_table(table)
 
-    if current_gw > 0:
-        st.markdown("### Detaljer")
-        players = current_player_totals(bootstrap)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Toppscorere**")
-            st.dataframe(players.sort_values(["Mål","Spiller"], ascending=[False,True])[["Spiller","Lag","Mål"]].head(10),
-                         hide_index=True, use_container_width=True)
-        with c2:
-            st.markdown("**Flest assist**")
-            st.dataframe(players.sort_values(["Assist","Spiller"], ascending=[False,True])[["Spiller","Lag","Assist"]].head(10),
-                         hide_index=True, use_container_width=True)
+    with dash_right:
+        st.markdown(f"#### Bonusstatistikk · {gw_label}")
+        if current_gw == 0:
+            st.caption("Bonuskonkurransene starter når det finnes sportslige resultater.")
+        show_bonus_dashboard(current_bonus)
 
-        team_cards = players.groupby("Lag", as_index=False)[["Gule","Røde"]].sum()
-        c3, c4 = st.columns(2)
-        with c3:
-            st.markdown("**Gule kort per lag**")
-            st.dataframe(team_cards.sort_values(["Gule","Lag"], ascending=[False,True]).head(20),
-                         hide_index=True, use_container_width=True)
-        with c4:
-            st.markdown("**Røde kort per lag**")
-            st.dataframe(team_cards.sort_values(["Røde","Lag"], ascending=[False,True]).head(20),
-                         hide_index=True, use_container_width=True)
+        if current_gw > 0:
+            players = current_player_totals(bootstrap)
+            st.markdown("##### Toppscorere")
+            st.dataframe(
+                players.sort_values(["Mål","Spiller"], ascending=[False,True])[["Spiller","Lag","Mål"]].head(5),
+                hide_index=True, use_container_width=True
+            )
+            st.markdown("##### Flest assist")
+            st.dataframe(
+                players.sort_values(["Assist","Spiller"], ascending=[False,True])[["Spiller","Lag","Assist"]].head(5),
+                hide_index=True, use_container_width=True
+            )
 
 with tab_history:
     st.markdown('<div class="section-title">Poengutvikling gjennom sesongen</div>', unsafe_allow_html=True)
