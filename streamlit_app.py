@@ -201,15 +201,22 @@ def parse_participant_xlsx(file_obj) -> tuple[dict, list[str]]:
         wb[wb.sheetnames[1]] if len(wb.sheetnames) > 1 else tab_ws
     )
 
-    # Participant name: find label "navn"/"deltaker", else infer from filename
+    # Participant name: find a dedicated name field, else infer from filename.
     participant = ""
+    rejected_name_values = {
+        "kategori", "tips", "lag", "plass", "plassering", "tabelltips",
+        "bonustips", "spiller", "svar", "premier league"
+    }
+
     for ws in (tab_ws, bonus_ws):
         for row in ws.iter_rows():
             for c in row:
-                if norm_key(c.value) in ("navn", "deltaker", "deltakernavn"):
+                label = norm_key(c.value)
+                if label in ("navn", "deltaker", "deltakernavn", "navn deltaker"):
                     for j in range(c.column + 1, min(c.column + 5, ws.max_column + 1)):
                         v = norm(ws.cell(c.row, j).value)
-                        if v:
+                        vk = norm_key(v)
+                        if v and vk not in rejected_name_values:
                             participant = v
                             break
                 if participant:
@@ -223,11 +230,35 @@ def parse_participant_xlsx(file_obj) -> tuple[dict, list[str]]:
     stem = Path(filename).stem
     inferred = re.sub(r"(?i)^premier league[- –—]*tips[- –—]*", "", stem).strip()
     inferred = re.sub(r"\(\d+\)$", "", inferred).strip()
-    if not participant:
+
+    generic_names = {
+        "kategori", "tips", "lag", "plass", "plassering", "tabelltips",
+        "bonustips", "spiller", "svar", "svartype", "kategori svartype",
+        "premier league"
+    }
+
+    # For this competition, the submitted filename is the safest participant identifier:
+    # "Premier League-tips – Ola Nordmann.xlsx" -> "Ola Nordmann".
+    filename_has_participant = bool(re.match(
+        r"(?i)^premier league[- –—]*tips[- –—]*.+", stem
+    ))
+    parsed_participant = participant
+
+    if filename_has_participant and inferred:
+        participant = inferred
+    elif (not participant) or norm_key(participant) in generic_names:
         participant = inferred or stem
 
-    if inferred and participant and norm_key(inferred) not in norm_key(participant) and norm_key(participant) not in norm_key(inferred):
-        warnings.append(f'Filnavnet tyder på "{inferred}", men navnefeltet sier "{participant}".')
+    # Only warn when the sheet contains a plausible real name that disagrees with the filename.
+    if (
+        inferred and parsed_participant
+        and norm_key(parsed_participant) not in generic_names
+        and norm_key(inferred) not in norm_key(parsed_participant)
+        and norm_key(parsed_participant) not in norm_key(inferred)
+    ):
+        warnings.append(
+            f'Filnavnet tyder på "{inferred}", mens et navnefelt i arket ser ut til å være "{parsed_participant}".'
+        )
 
     # Table tips: scan rows for team + integer rank 1..20
     tips = {}
@@ -675,7 +706,13 @@ with tab_history:
         with st.spinner("Bygger GW-historikk..."):
             hist = build_history(participants, bootstrap, fixtures, current_gw)
 
-    wide = hist.pivot(index="GW", columns="Deltaker", values="Poeng").sort_index()
+    # pivot_table is defensive against accidental duplicate GW/deltaker rows.
+    wide = hist.pivot_table(
+        index="GW",
+        columns="Deltaker",
+        values="Poeng",
+        aggfunc="max"
+    ).sort_index()
     st.line_chart(wide, x_label="Gameweek", y_label="Poeng", height=480)
 
     st.markdown("#### Poeng per GW")
