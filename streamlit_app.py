@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import io
+import html
 import re
 from typing import Any
 
@@ -79,8 +80,8 @@ h1, h2, h3 {
     font-size: .92rem;
 }
 .bonus-ok {
-    background: rgba(0, 200, 100, .24);
-    border: 1px solid rgba(0, 170, 85, .55);
+    background: #d9f2e3;
+    border: 1px solid #6fcf97;
 }
 .bonus-no {
     background: rgba(220, 60, 70, .12);
@@ -115,6 +116,36 @@ h1, h2, h3 {
     opacity: .72;
     font-size: .88rem;
 }
+
+.tip-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: .88rem;
+    margin-top: 6px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid rgba(128,128,128,.22);
+}
+.tip-table th {
+    text-align: left;
+    padding: 8px 9px;
+    background: rgba(55,0,60,.06);
+    border-bottom: 1px solid rgba(128,128,128,.22);
+}
+.tip-table td {
+    padding: 7px 9px;
+    border-bottom: 1px solid rgba(128,128,128,.13);
+}
+.tip-table tr:last-child td {
+    border-bottom: none;
+}
+.tip-exact td { background: #d9f2e3; }
+.tip-one td   { background: #dbeafe; }
+.tip-two td   { background: #fff4bf; }
+.tip-three td { background: #ffe0b2; }
+.tip-four td  { background: #ffd6d6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -146,7 +177,29 @@ def norm(s: Any) -> str:
     return re.sub(r"\s+", " ", str(s or "").strip())
 
 def norm_key(s: Any) -> str:
-    return re.sub(r"[^a-z0-9æøå]+", " ", norm(s).lower()).strip()
+    key = re.sub(r"[^a-z0-9æøå]+", " ", norm(s).lower()).strip()
+
+    team_aliases = {
+        "man city": "manchester city",
+        "manchester city fc": "manchester city",
+        "man utd": "manchester united",
+        "man united": "manchester united",
+        "manchester utd": "manchester united",
+        "manchester united fc": "manchester united",
+        "spurs": "tottenham hotspur",
+        "tottenham": "tottenham hotspur",
+        "wolves": "wolverhampton wanderers",
+        "wolverhampton": "wolverhampton wanderers",
+        "brighton": "brighton hove albion",
+        "brighton and hove albion": "brighton hove albion",
+        "nottm forest": "nottingham forest",
+        "nottingham": "nottingham forest",
+        "west ham": "west ham united",
+        "newcastle": "newcastle united",
+        "leeds": "leeds united",
+    }
+
+    return team_aliases.get(key, key)
 
 
 
@@ -544,60 +597,57 @@ def render_participant_card(scored: dict, rank: int, bonus_state_now: dict):
 
         # Deltakerens tippede tabell mot reell tabell
         st.markdown("#### Tabell")
-        tip_rows = []
-        for team, predicted, actual, diff, pts in scored["detail"]:
-            tip_rows.append({
-                "Lag": team,
-                "Tippet": int(predicted),
-                "Reell": int(actual),
-                "Avvik": int(diff),
-            })
 
-        if tip_rows:
-            tip_df = (
-                pd.DataFrame(tip_rows)
-                .sort_values("Tippet")
-                .reset_index(drop=True)
-            )
+        if scored["detail"]:
+            table_rows = []
 
-            def color_tip_row(row):
-                diff = int(row["Avvik"])
+            for team, predicted, actual, diff, pts in sorted(
+                scored["detail"], key=lambda x: x[1]
+            ):
+                diff = int(diff)
 
                 if diff == 0:
-                    bg = "#d9f2e3"   # grønn
+                    row_class = "tip-exact"
                 elif diff == 1:
-                    bg = "#dbeafe"   # blå
+                    row_class = "tip-one"
                 elif diff == 2:
-                    bg = "#fff4bf"   # gul
+                    row_class = "tip-two"
                 elif diff == 3:
-                    bg = "#ffe0b2"   # oransje
+                    row_class = "tip-three"
                 else:
-                    bg = "#ffd6d6"   # rød
+                    row_class = "tip-four"
 
-                return [f"background-color: {bg}; color: #111111"] * len(row)
+                table_rows.append(
+                    f"""
+                    <tr class="{row_class}">
+                        <td>{html.escape(str(team))}</td>
+                        <td>{int(predicted)}</td>
+                        <td>{int(actual)}</td>
+                        <td>{diff}</td>
+                    </tr>
+                    """
+                )
 
-            styled_tip_df = tip_df.style.apply(color_tip_row, axis=1)
+            table_html = f"""
+            <table class="tip-table">
+                <thead>
+                    <tr>
+                        <th>Lag</th>
+                        <th>Tippet</th>
+                        <th>Reell</th>
+                        <th>Avvik</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(table_rows)}
+                </tbody>
+            </table>
+            """
 
-            st.dataframe(
-                styled_tip_df,
-                hide_index=True,
-                use_container_width=True,
-                height=490,
-                column_config={
-                    "Lag": st.column_config.TextColumn("Lag", width="medium"),
-                    "Tippet": st.column_config.NumberColumn(
-                        "Tippet", width="small", format="%d"
-                    ),
-                    "Reell": st.column_config.NumberColumn(
-                        "Reell", width="small", format="%d"
-                    ),
-                    "Avvik": st.column_config.NumberColumn(
-                        "Avvik",
-                        width="small",
-                        format="%d",
-                        help="0 = grønn, ±1 = blå, ±2 = gul, ±3 = oransje, 4+ = rød.",
-                    ),
-                },
+            st.markdown(table_html, unsafe_allow_html=True)
+
+            st.caption(
+                "🟩 riktig · 🟦 ±1 · 🟨 ±2 · 🟧 ±3 · 🟥 4+ plasser unna"
             )
         else:
             st.caption("Ingen tabelltips kunne kobles mot den reelle tabellen.")
