@@ -618,31 +618,26 @@ def render_participant_card(scored: dict, rank: int, bonus_state_now: dict):
                     row_class = "tip-four"
 
                 table_rows.append(
-                    f"""
-                    <tr class="{row_class}">
-                        <td>{html.escape(str(team))}</td>
-                        <td>{int(predicted)}</td>
-                        <td>{int(actual)}</td>
-                        <td>{diff}</td>
-                    </tr>
-                    """
+                    f'<tr class="{row_class}">'
+                    f'<td>{html.escape(str(team))}</td>'
+                    f'<td>{int(predicted)}</td>'
+                    f'<td>{int(actual)}</td>'
+                    f'<td>{diff}</td>'
+                    f'</tr>'
                 )
 
-            table_html = f"""
-            <table class="tip-table">
-                <thead>
-                    <tr>
-                        <th>Lag</th>
-                        <th>Tippet</th>
-                        <th>Reell</th>
-                        <th>Avvik</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {''.join(table_rows)}
-                </tbody>
-            </table>
-            """
+            table_html = (
+                '<table class="tip-table">'
+                '<thead><tr>'
+                '<th>Lag</th>'
+                '<th>Tippet</th>'
+                '<th>Reell</th>'
+                '<th>Avvik</th>'
+                '</tr></thead>'
+                '<tbody>'
+                + ''.join(table_rows)
+                + '</tbody></table>'
+            )
 
             st.markdown(table_html, unsafe_allow_html=True)
 
