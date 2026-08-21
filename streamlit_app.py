@@ -246,7 +246,15 @@ def find_value_right_of_label(ws, aliases: list[str]):
     return ""
 
 def parse_participant_xlsx(file_obj) -> tuple[dict, list[str]]:
-    data = file_obj.getvalue() if hasattr(file_obj, "getvalue") else file_obj.read()
+    # Supports both Streamlit UploadedFile objects and .xlsx files stored in the repo.
+    if isinstance(file_obj, (str, Path)):
+        file_path = Path(file_obj)
+        data = file_path.read_bytes()
+        source_filename = file_path.name
+    else:
+        data = file_obj.getvalue() if hasattr(file_obj, "getvalue") else file_obj.read()
+        source_filename = getattr(file_obj, "name", "")
+
     wb = load_workbook(io.BytesIO(data), data_only=True)
     warnings = []
 
@@ -281,7 +289,7 @@ def parse_participant_xlsx(file_obj) -> tuple[dict, list[str]]:
         if participant:
             break
 
-    filename = getattr(file_obj, "name", "")
+    filename = source_filename
     stem = Path(filename).stem
     inferred = re.sub(r"(?i)^premier league[- –—]*tips[- –—]*", "", stem).strip()
     inferred = re.sub(r"\(\d+\)$", "", inferred).strip()
@@ -554,14 +562,45 @@ def render_bonus_rows(scored: dict, bonus_state_now: dict):
     for label in BONUS_ALIASES:
         answer = scored["participant"]["bonus"].get(label, "") or "—"
         status = scored["bonus_hits"].get(label)
+        leaders = bonus_state_now.get(label, {}).get("leaders", [])
+
         if status is True:
             cls, icon = "bonus-ok", "🟢"
         elif status is False:
             cls, icon = "bonus-no", "🔴"
         else:
             cls, icon = "bonus-neutral", "⚪"
+
+        tie_note = ""
+        if status is True and len(leaders) > 1:
+            answer_key = norm_key(answer)
+            other_leaders = [
+                leader for leader in leaders
+                if norm_key(leader) != answer_key
+            ]
+
+            if other_leaders:
+                if len(other_leaders) == 1:
+                    shared_with = other_leaders[0]
+                else:
+                    shared_with = ", ".join(other_leaders[:-1]) + " og " + other_leaders[-1]
+
+                tie_note = (
+                    f'<div style="font-size:.78rem; opacity:.72; margin-top:3px;">'
+                    f'Delt med {html.escape(shared_with)}</div>'
+                )
+            else:
+                tie_note = (
+                    f'<div style="font-size:.78rem; opacity:.72; margin-top:3px;">'
+                    f'Delt ledelse</div>'
+                )
+
         st.markdown(
-            f'<div class="bonus-row {cls}"><b>{icon} {label}</b><br>{answer}</div>',
+            f'<div class="bonus-row {cls}">'
+            f'<b>{icon} {html.escape(label)}</b><br>'
+            f'{html.escape(answer)}'
+            f'{tie_note}'
+            f'</div>',
             unsafe_allow_html=True,
         )
 
@@ -699,23 +738,25 @@ st.markdown('<div class="live-pill">● LIVE SESONGDASHBOARD</div>', unsafe_allo
 
 with st.sidebar:
     st.header("Konkurranse")
-    uploaded = st.file_uploader(
-        "Last opp tippeark",
-        type=["xlsx"],
-        accept_multiple_files=True,
-        help="Du kan laste opp alle deltakernes Excel-filer samtidig.",
-    )
-    if st.button("🔄 Oppdater live-data", use_container_width=True):
-        refresh_live_data()
-    st.caption("Fotballdata caches i opptil 15 minutter mellom oppdateringer.")
+    st.success("🔒 Visningsmodus")
+    st.caption("Dashboardet er skrivebeskyttet for besøkende. Deltakerdata administreres i GitHub.")
+    st.caption("Live fotballdata oppdateres automatisk og caches i opptil 15 minutter.")
 
-if not uploaded:
-    st.info("Last opp minst ett tippeark i sidepanelet for å starte.")
+# Deltakerark lagres i GitHub-mappen /tippeark.
+# Besøkende til Streamlit-appen får ingen opplastings- eller redigeringskontroller.
+TIPPEARK_DIR = Path(__file__).parent / "tippeark"
+repo_files = sorted(TIPPEARK_DIR.glob("*.xlsx")) if TIPPEARK_DIR.exists() else []
+
+if not repo_files:
+    st.error(
+        "Fant ingen deltakernes Excel-filer. "
+        "Opprett mappen `tippeark` i GitHub og legg inn de utfylte .xlsx-filene der."
+    )
     st.stop()
 
 participants = []
 all_warnings = []
-for f in uploaded:
+for f in repo_files:
     try:
         p, warnings = parse_participant_xlsx(f)
         participants.append(p)
